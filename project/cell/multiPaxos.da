@@ -11,7 +11,7 @@ class HeartBeat(DistProcess):
         t_s = 4
     
     def main():
-        heatBeat()
+        heartBeat()
         await(False)   
     
     def heartBeat():
@@ -63,7 +63,8 @@ class Replica(DistProcess):
     def operations(op):
         llock = op % 5;
         oper = op %2 ;
-        state[llock] = str(oper)
+        ffile = "file".join(str(llock))
+        state[ffile] = oper
    
     def Onhb():
         output("This is the heart beat that i was talking about")
@@ -318,11 +319,11 @@ def main():
     clients = createprocs(Client, nclients, (replicas,))
     myid = 1
     initial_state = {}
-    initial_state[0] = str(0)
-    initial_state[1] = str(1)
-    initial_state[2] = str(2)
-    initial_state[3] = str(3)
-    initial_state[4] = str(4)
+    initial_state["file0"] = 0
+    initial_state["file1"] = 1
+    initial_state["file2"] = 2
+    initial_state["file3"] = 3
+    initial_state["file4"] = 4
     for rep in replicas:
         setupprocs([rep], (acceptors,replicas, initial_state,rep,myid))
         myid = myid +1
