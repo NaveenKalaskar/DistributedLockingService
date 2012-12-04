@@ -1,0 +1,8 @@
+#vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4 filetype=python
+
+# this file will contain methods to elect a leader
+
+# when a chubby server fails, it fails to send a keep alive message 
+# to the other replicas. 
+
+# It sends to:wq

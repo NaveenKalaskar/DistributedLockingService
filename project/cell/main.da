@@ -1,0 +1,164 @@
+import sys
+import random
+dist_source(".","multiPaxos.da")
+
+def main():
+
+    nacceptors = 3
+    nreplicas = 3
+    nleaders = 1
+    nclients = 8
+    nops = 5
+
+    use_channel("tcp")
+
+    acceptors = createprocs(Acceptor, nacceptors, [])
+    replicas = createprocs(Replica, nreplicas)
+    leaders = createprocs(Leader, nleaders, (acceptors, replicas))
+    clients = createprocs(Client, nclients, (replicas,))
+    setupprocs(replicas, (leaders, 0))
+    ##### new code start
+    setupprocs(acceptors,[])
+    setupprocs(leaders,[acceptors,replicas])
+    setupprocs(clients,[replicas])
+    ##### end
+    startprocs(acceptors)
+    startprocs(replicas | leaders)
+    #inpt = input('Enter')
+    startprocs(clients)
+    
+    for p in acceptors | replicas | leaders | clients: p.join()
+
+
+def main():
+      # configuration: number of processes
+      # create n process
+      
+      
+      if len(sys.argv) > 2: 
+         if(int(sys.argv[1])<2):
+           n = 2
+         else:  
+           n = int(sys.argv[1])
+         if(int(sys.argv[2])<10):  
+           nreq = 10
+         else:  
+           nreq = int(sys.argv[2])  
+      else: 
+         n = 5
+         nreq    = 5
+      
+      x = nreq
+      
+      requests = []
+      for i in range(n-1):
+        qrtr = int(x/4)
+        tqrtr = x-qrtr
+        requests.append(random.randint(qrtr, tqrtr))
+        x = x - requests[i]
+      requests.append(x)
+      
+      #Ricart - Argrawala 2n _ Clarity
+      
+      ps = createprocs(RaMutex_Clarity, n)
+      # setup the processes
+      ind = 0
+      for p in ps: 
+        setupprocs([p], [ps-{p}, requests[ind]])
+        ind = ind+1
+      startprocs(ps)
+      for p in ps: p.join()
+      
+      #Ricart - Argrawala 2n _ Clarity
+      
+      ps = createprocs(RaMutex_Incremental, n)
+      # setup the processes
+      ind = 0
+      for p in ps: 
+        setupprocs([p], [ps-{p}, requests[ind]])
+        ind = ind+1
+      startprocs(ps)
+      for p in ps: p.join()
+      
+      #Ricart - Agrawala 
+      ps = createprocs(Ricart_Incremental, n)
+
+      #build the token
+      token = {}
+      for proc in ps:token[proc] = -1
+
+      #setup one proc with a token
+      token_proc = ps.pop()
+      setupprocs([token_proc], [ps, token,requests[0]])
+      ps.add(token_proc)
+      # setup the processes
+      token = {}
+      ind = 1
+      for proc in ps:
+          if proc != token_proc:
+             setupprocs([proc], [ps-{proc},token,requests[ind]])
+             ind = ind + 1
+      print("Running Ricart-Agrawala's token-based algorithm with optimization")
+      startprocs(ps)
+      for p in ps: p.join()
+ 
+      
+      #Ricart - Agrawala 
+      ps = createprocs(Ricarta_Clarity, n)
+
+      #build the token
+      token = {}
+      for proc in ps:token[proc] = -1
+
+      #setup one proc with a token
+      token_proc = ps.pop()
+      setupprocs([token_proc], [ps, token,requests[0]])
+      ps.add(token_proc)
+      # setup the processes
+      token = {}
+      ind = 1
+      for proc in ps:
+          if proc != token_proc:
+             setupprocs([proc], [ps-{proc},token,requests[ind]])
+             ind = ind + 1
+      print("Running Ricart-Agrawala's token-based algorithm with Clarity")
+      startprocs(ps)
+      for p in ps: p.join()  
+      
+      
+      # Suzuki-Kasami
+      ps = createprocs(Suzuki_Incremental, n)
+      #setup one proc with privilege
+      priv_proc = ps.pop()
+      print("setup calling....",priv_proc)
+      setupprocs([priv_proc], [ps,True,priv_proc,requests[0]])
+      ps.add(priv_proc)
+      # setup the processes
+      token = {}
+      ind = 1
+      for proc in ps:
+          if proc != priv_proc:
+             setupprocs([proc], [ps-{proc},False,proc,requests[ind]])
+      print("Running Suzuki-Kasami token-based algorithm")
+      startprocs(ps)
+      for p in ps: p.join()
+
+
+      # Suzuki-Kasami
+      ps = createprocs(Suzuki_Clarity, n)
+      #setup one proc with privilege
+      priv_proc = ps.pop()
+      print("setup calling....",priv_proc)
+      setupprocs([priv_proc], [ps,True,priv_proc,requests[0]])
+      ps.add(priv_proc)
+      # setup the processes
+      token = {}
+      ind = 1
+      for proc in ps:
+          if proc != priv_proc:
+             setupprocs([proc], [ps-{proc},False,proc,requests[ind]])
+      print("Running Suzuki-Kasami token-based algorithm")
+      startprocs(ps)
+      for p in ps: p.join()
+
+      

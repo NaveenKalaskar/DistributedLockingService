@@ -1,0 +1,203 @@
+# vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4 filetype=python
+from random import randint
+import sys
+NOPS = 10                       # Number of operations of the state machine
+operations = {i: (lambda state: (state+i,state+i)) for i in range(NOPS)}
+
+class Replica(DistProcess):
+    def setup(leaders, initial_state):
+        state, slot_num = initial_state, 1
+        proposals, decisions = set(), set()
+
+    def main():
+        await(False)
+
+    def propose(p):
+        if not {s for (s, p1) in decisions if p1 == p}:
+            maxs = max({0} |
+                       set(s for (s,p1) in proposals) |
+                       set(s for (s,p1) in decisions))
+            s1 = min(s for s in range(1, maxs + 1 + 1)
+                     if not (set(p1 for (s0, p1) in proposals if s0 == s) |
+                             set(p1 for (s0, p1) in decisions if s0 == s)))
+            proposals.add((s1, p))
+            send(Propose(s1, p), leaders)
+
+    def perform(p):
+        k, cid, op = p
+        if {s for (s, p0) in decisions if p0 == p and s < slot_num}:
+            slot_num += 1
+        else:
+            next, result = operations[op](state)
+            state, slot_num = next, slot_num + 1
+            send(Response(cid, result), k)   
+            #proposals = proposals - set([(s1,p1) for (s1,p1) in proposals if s1 < slot_num])
+            #garbage collection
+            #send(Performed(slot_num, p), leaders)
+    def OnRequest(p):
+        propose(p)
+
+    def OnDecision(s, p):
+        decisions.add((s,p))
+        while {p1 for (s0,p1) in decisions if s0==slot_num}:
+            p1 = {p1 for (s0,p1) in decisions if s0==slot_num}.pop()
+            for p2 in {p2 for (s0,p2) in proposals if s0==slot_num if p2 != p1}:
+                propose(p2)
+            perform(p1)
+
+class Acceptor(DistProcess):
+    def setup():
+        ballot_num = (-1, -1)   # bottom
+        accepted = set()
+
+    def main():
+        await(False)
+
+    def OnP1a(lam, b):
+        if b > ballot_num:
+            ballot_num = b
+        send(P1b(self, ballot_num, accepted), lam)
+
+    def OnP2a(lam, load):
+        b, s, p = load
+        if b >= ballot_num :
+            ballot_num = b
+            accepted.add((b,s,p))
+        send(P2b(self, ballot_num), lam)
+
+class Leader(DistProcess):
+    def setup(acceptors, replicas):
+        ballot_num = (0, self)
+        active = False
+        proposals = set()
+
+    def main():
+        spawn(Scout, [self, acceptors, ballot_num])
+        await(False)
+
+    def OnPropose(s, p):
+        if not {p1 for (s1, p1) in proposals if s1 == s}:
+            proposals.add((s,p))
+            if active:
+                spawn(Commander, [self, acceptors, replicas, (ballot_num, s, p)])
+
+    def OnAdopted(ballot_num_, pvals):
+        if ballot_num_ == ballot_num:
+            proposals = circle_plus(proposals, pmax(pvals))
+            for (s, p) in proposals:
+                spawn(Commander, [self, acceptors, replicas, (ballot_num, s, p)])
+            active = True
+
+    def OnPreempted(b):
+        r1, lam1 = b
+        if b > ballot_num:
+            active = False
+            ballot_num = (r1+1, self)
+            spawn(Scout, [self, acceptors, ballot_num])
+
+    def circle_plus(x, y):
+        return y | {(s, p) for (s, p) in x
+                      if not {p1 for (s0, p1) in y if s0 == s}}
+
+    def pmax(pvals):
+        return {(s, p) for (b, s, p) in pvals
+                if all(b1 <= b for (b1, s0, p1) in pvals if s0 == s)}
+
+
+class Commander(DistProcess):
+    def setup(lam, acceptors, replicas, load):
+        waitfor = set(acceptors)
+        b, s, p = load
+        done = False
+
+    def main():
+        send(P2a(self, (b, s, p)), acceptors)
+        await(done)
+
+    def OnP2b(a, b1):
+        if (b1 == b):
+            if a in waitfor:
+                waitfor.remove(a)
+            if len(waitfor) < len(acceptors)/2:
+                send(Decision(s, p), replicas)
+                done = True
+        else:
+            send(Preempted(b1), lam)
+            done = True
+
+
+class Scout(DistProcess):
+    def setup(lam, acceptors, b):
+        waitfor = set(acceptors)
+        pvalues = set()
+        done = False
+
+    def main():
+        import time
+        import random
+        time.sleep(random.random())
+        send(P1a(self, b), acceptors)
+        await(done)
+
+    def OnP1b(a, b1, r):
+        if b1 == b:
+            pvalues |= r
+            if a in waitfor:
+                waitfor.remove(a)
+            if len(waitfor) < len(acceptors)/2:
+                send(Adopted(b, pvalues), lam)
+                done = True
+        else:
+            send(Preempted(b1), lam)
+            done = True
+
+class Client(DistProcess):
+    def setup(replicas):
+        cid = 0
+        results = dict()
+        count = dict()
+
+    def main():
+        while (True):
+            send(Request((self, cid, randint(0, NOPS-1))), replicas)
+            await(results.get(cid) != None and count.get(cid) == len(replicas))
+            output("Received result %d:%d" % (cid, results[cid]))
+            cid += 1
+
+    def OnResponse(cid, result):
+        if results.get(cid) == None:
+            results[cid] = result
+            count[cid] = 1
+        else:
+            if results[cid] != result:
+                output("Replicas out of sync at cid(%d) : %d - %d " %
+                       (cid, results[cid], result))
+            else:
+                count[cid] += 1
+
+def main():
+    nacceptors = 3
+    nreplicas = 3
+    nleaders = 1
+    nclients = 3
+    nops = 5
+
+    use_channel("tcp")
+
+    acceptors = createprocs(Acceptor, nacceptors, [])
+    replicas = createprocs(Replica, nreplicas)
+    leaders = createprocs(Leader, nleaders, (acceptors, replicas))
+    clients = createprocs(Client, nclients, (replicas,))
+    setupprocs(replicas, (leaders, 0))
+    ##### new code start
+    setupprocs(acceptors,[])
+    setupprocs(leaders,[acceptors,replicas])   
+    setupprocs(clients,[replicas])
+    ##### end
+    startprocs(acceptors)
+    startprocs(replicas | leaders)
+    inpt = input('Enter')
+    startprocs(clients)
+
+    for p in acceptors | replicas | leaders | clients: p.join()
+

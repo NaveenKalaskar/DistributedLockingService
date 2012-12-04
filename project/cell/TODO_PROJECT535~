@@ -1,0 +1,90 @@
+modifications need to be made : 
+
+customization for chubby
+====================================================
+
+
+> only one replica receives request.
+
+> the state to have multiple locks?? or there is one paxos for each lock??
+
+ >> go for the simpler one..!! 
+
+state to have multiple locks.. 
+
+so state is an array of locks??
+
+wheres is the file abstraction??
+
+
+how is lock request rejected..
+============================================
+
+ballot number as the leader number ..
+
+replicas ping the leaders .. 
+
+if replica responds within a time frame.. no replica spawns a leader..
+
+else after n secs of ping with no response, the first replica spawns a scout.
+
+the second replica spawns a scout if after 2n secs, no new leader info is provided.
+
+=============================================
+
+Improvement 1 :
+
+> p1b messages will include only the maximum pvalue seen so far.  
+
+( 
+this one reduces the p1b  message size, as well as the acceptor's
+
+state size ) (at most a constant or linear increasing state ) 
+
+	
+> p1a message modification, only those slots that are required.
+
+reduces the p1b message size.
+
+=============================================
+
+Improvement 2 : 
+
+If all replicas have learnt a decision for a slot, the acceptors need not maintain those pvalues..
+
+replicas communicate to leaders.. leaders -> acceptors.
+
+( gc_slotnumber : is returned in the p1b ) 
+
+==============================================
+
+Improvement 3 : Error
+
+Pinging the leader by replicas  every n secs...
+
+ping wait..
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

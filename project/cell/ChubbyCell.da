@@ -1,0 +1,58 @@
+# vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4 filetype=python
+#This is the abstraction of a server.
+#each server will contain a ChubbyState, a ChubbyInterface,
+# and will interact with
+# another server through Paxos interaction ( no direction interaction )
+# a client to ChubbyInterface.
+
+#import statements here
+
+import sys
+import random
+from collections import deque
+
+source(".","ChubbyInterface.da")
+#source(".","ServerState.da")
+
+class ChubbyServer(DistProcess):
+    
+    def setup(lockds,clientds):
+        
+        # a map of locks and their state 
+        # a dictionary in python
+        # lockid:state (__)        
+        lockds = {}
+        # a map of clients and locks that it has access to        
+        clientds = {}
+        # a queue of locks that are queued based on their time
+        # of expiration.
+        timerqueue = deque([])    
+        isMaster = False;
+        MasterId = -1;
+        chubbyIntrfc = ChubbyInterface()
+        #mystate = ServerState(lockds,clientds)
+        
+    
+    def addLock(lockid):
+        # lockds[lockid]  
+
+    def addClientLockPriv(clientid,lockid):
+        lockds.setdefault(clientid,[]).append(lockid)
+    
+    def testAndSetLock(lockid):
+            ##
+    
+    def testAndReleaseLock(lockid):
+            ##
+    
+    def engagePaxosWrite(lockid):
+            ##
+    def engageLeaderElect():
+            ##
+    def getStat(lockid):
+            ##
+    def getSequencer(lockid):
+            ##
+        
+
+      

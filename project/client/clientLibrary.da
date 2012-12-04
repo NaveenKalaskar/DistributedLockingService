@@ -1,0 +1,40 @@
+# vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4 filetype=python
+
+
+# I'll have to interact with processes waiting for their requests and service
+# their requests by interacting with Chubby Server
+
+# Client programs will be driver programs using the api provided by the Client
+#library
+
+#When Client library starts, it is provided with information of replicas.
+
+
+Class ClientLibrary(DistProcess):
+    def setup(replicas):
+        master=replicas.pop()
+        replicas.push(master)
+    def DiscoverMaster(master):
+        send(MasterDiscovery(),master)
+    def OnMasterDiscoveryResp(mast):
+            master=mast
+    def OnOpen(cid,ofile):
+        # send this cid to the open request to Chubby master
+    def OnClose(cid,cfile):
+        #close the handle
+        # remove the handle from the handles dictionary.
+    def OnWrite(handle,content):
+        # send SetContents() request to master
+    
+    # response from server 
+    def OnGetSequencerResp():
+        # the server writes here!!
+    def OnCheckSequencer():
+        # lock that is cached, before using it, check 
+    def OnDelete():
+        #send delete req to server
+    def Acquire():
+        # a blocking operation.
+    def TryAcquire():
+        #try acquire. server immediately responds..
+  

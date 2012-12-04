@@ -1,0 +1,8 @@
+#/bin/bash
+
+while true
+do
+    ls -l /proc/"$1"/fd
+    ls -l /proc/"$1"/fd | wc -l
+    sleep 10
+done
