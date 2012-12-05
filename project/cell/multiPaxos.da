@@ -1,12 +1,36 @@
-# vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4 filetype=python
+# vim: tabst    op=8 expandtab shiftwidth=4 softtabstop=4 filetype=python
 from random import randint
 from time import sleep
 import sys
 NOPS = 10                       # Number of operations of the state machine
 #operations = {i: (lambda state: (state+i,state+i)) for i in range(NOPS)}
 
+class KeepAliveP(DistProcess):
+       
+       # This thread sends keep alive messages to replicas this thread is 
+       # spawned by leader.
+       # for each replica at every regular interval, update its leader alive counter
+       # by fixed value.
+       # sleep for fixed amount of time.
 
-class HeartBeat(DistProcess):
+       def setup(replicas,timetosleep,count,leadid):
+           notLeader = False
+           counter = 0
+           
+       def keepAlive():
+           send(KeepAlive(counter,leadid),replicas)
+           sleep(timetosleep)
+           counter = counter + count
+
+       def die(newleader):
+           send(leadid,newleader)
+           notLeader = True
+       
+       def main():
+           await(notLeader or keepAlive())
+           
+
+class HeartBeatP(DistProcess):
 # for a fixed amount of time check the time last ping was done by the leader..
 # by calling a send on replica which in turn just calls the ping response of heart beat.
 #Also the leader can ping all the replicas regularly and check if all of them are responding.
@@ -19,14 +43,15 @@ class HeartBeat(DistProcess):
 
 
  
-	def OnPingResponse(leaderid, 
+    def OnreplyPulse(counter,leaderid):
+        
 
     def setup(replicas):
         t_s = 4
     
     def main():
         heartBeat()
-        await(False)   
+        await(False or heartBeat())
     
     def heartBeat():
         output("this is the heart beat ")
@@ -61,6 +86,20 @@ class Replica(DistProcess):
         if (self.lmyid == 1):
             leader = spawn(Leader,[acceptors, replicas])
             isLeader = True
+    
+    def OnKeepAlive(lcounter,lleaderid):
+        # check whether the message is from the current leader
+        if not (leaderid == lleaderid):
+            send(die(leaderid),_source)
+        # check the counter if the counter is older one ignore
+        if(counter < lcounter):
+            # do nothing
+               temp =1
+        else:       
+            counter = lcounter
+            
+    def OnHeartBeat()
+        send(replyPulse(counter,leaderid),_source)
     def main():
         if(lmyid == 1):
             leaderAnnounce()
@@ -172,22 +211,22 @@ class Leader(DistProcess):
         await(False)
    
     def OnPropose(s, p):
-	
-	# acquire the global lock. No other propose should be done with in this leader
-	# before this proposal.#
-		await(leadlock)
-		leadlock = false
-		#permission check??
-		# from proposal get the type of operation required.
-		#if the operation is on a not existing node .. check if a create is required.
-		#if no release the lock and return error
-		#
-		#if the operation is a read, it can be satisfied at this replica it self.
-		#
-		#check the type of request.
-		# if try acquire.. check if its busy, return failure
-		#intimate the replica about the request.
-		#
+        
+        # acquire the global lock. No other propose should be done with in this leader
+        # before this proposal.#
+            await(leadlock)
+            leadlock = false
+            #permission check??
+            # from proposal get the type of operation required.
+            #if the operation is on a not existing node .. check if a create is required.
+            #if no release the lock and return error
+            #
+            #if the operation is a read, it can be satisfied at this replica it self.
+            #
+            #check the type of request.
+            # if try acquire.. check if its busy, return failure
+            #intimate the replica about the request.
+            #
         if not {p1 for (s1, p1) in proposals if s1 == s}:
             proposals.add((s,p))
             if active:
