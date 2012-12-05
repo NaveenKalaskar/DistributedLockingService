@@ -7,6 +7,20 @@ NOPS = 10                       # Number of operations of the state machine
 
 
 class HeartBeat(DistProcess):
+# for a fixed amount of time check the time last ping was done by the leader..
+# by calling a send on replica which in turn just calls the ping response of heart beat.
+#Also the leader can ping all the replicas regularly and check if all of them are responding.
+# if one of them doesn't respond, it notifies other replicas about it?? or when a leader comes up
+# should it check if all the replicas it has information about are up??
+
+# when leader is spawned it needs to check if all the replicas are up? ( the leader and replicas 
+# are co located .. so, if the leader is down, it implied that even the corresponding replica is down
+#
+
+
+ 
+	def OnPingResponse(leaderid, 
+
     def setup(replicas):
         t_s = 4
     
@@ -54,8 +68,8 @@ class Replica(DistProcess):
         else:
             await(False)
     def leaderAnnounce():
-        if (lmyid==1):
-            send(LeaderElect(leader),replicas-set([myself]))
+        if (lmyid==1): # instead check if i am the assignd master
+            send(LeaderIAm(leader),replicas-set([myself]))
         sleep(2)
         return False    
         # i am not the leader. So I should spawn a HeartBeat thread
@@ -158,6 +172,22 @@ class Leader(DistProcess):
         await(False)
    
     def OnPropose(s, p):
+	
+	# acquire the global lock. No other propose should be done with in this leader
+	# before this proposal.#
+		await(leadlock)
+		leadlock = false
+		#permission check??
+		# from proposal get the type of operation required.
+		#if the operation is on a not existing node .. check if a create is required.
+		#if no release the lock and return error
+		#
+		#if the operation is a read, it can be satisfied at this replica it self.
+		#
+		#check the type of request.
+		# if try acquire.. check if its busy, return failure
+		#intimate the replica about the request.
+		#
         if not {p1 for (s1, p1) in proposals if s1 == s}:
             proposals.add((s,p))
             if active:
