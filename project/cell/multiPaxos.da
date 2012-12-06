@@ -40,15 +40,49 @@ class HeartBeatP(DistProcess):
 # when leader is spawned it needs to check if all the replicas are up? ( the leader and replicas 
 # are co located .. so, if the leader is down, it implied that even the corresponding replica is down
 #
-
-
- 
-    def OnreplyPulse(counter,leaderid):
+    def OnreplyPulse(counter,lleaderid):
         
+        if(leaderid == lleaderid):
+            if(current >= counter):
+                # check fail count.
+                failcount = failcount + 1
+                if(failcount > distance*threshold)
+                    # YAY@ bich its my turn 
+                    # intimate the replica to proudly spawn a leader
+                    send(leadTheHeard(),myparent)
+                # if fail count is more than the threshold
+                # chck if it is its turn to become a leader
+                
+            else:
+                failcount = 0
+                current = counter
+                
+                # counter jumping?? do we care..
+                
+        else:
+            # CELEBRATE!! THE SAVIOUR IS BORN!! :) NEW LEADER
+            leaderid = lleaderid
+            current = counter
+            failcount = 0
+            if(myid > lmyid):
+                distance = (myid - leaderid) % NCELLS
+            else :
+                distance = (myid + NCELLS - leaderid) % NCELLS
+            
+                
 
-    def setup(replicas):
+    def setup(replicas, lleaderid,lmyid,lthresh,lparent):
         t_s = 4
-    
+        current = 0
+        failcount = 0
+        myparent = lparent
+        leaderid = lleaderid
+        myid = lmyid
+        threshold = lthresh
+        if(myid > lmyid):
+            distance = (myid - leaderid) % NCELLS
+        else :
+            distance = (myid + NCELLS - leaderid) % NCELLS
     def main():
         heartBeat()
         await(False or heartBeat())
@@ -86,6 +120,14 @@ class Replica(DistProcess):
         if (self.lmyid == 1):
             leader = spawn(Leader,[acceptors, replicas])
             isLeader = True
+            
+    def leadTheHeard():
+        # i need to spawn a leader and 
+        leader = spawn(Leader,[acceptors, replicas])
+        isLeader = True
+        leaderAnnounce()
+            
+            
     
     def OnKeepAlive(lcounter,lleaderid):
         # check whether the message is from the current leader
