@@ -56,6 +56,22 @@ class HeartBeatP(DistProcess):
 # when leader is spawned it needs to check if all the replicas are up? ( the leader and replicas 
 # are co located .. so, if the leader is down, it implied that even the corresponding replica is down
 #
+    def setup(replicas, lleaderid,lmyid,lthresh,lparent):
+        t_s = 4
+        current = 0
+        failcount = 0
+        myparent = lparent
+        leaderid = lleaderid
+        myid = lmyid
+        threshold = lthresh
+        if(myid > lmyid):
+            distance = (myid - leaderid) % NCELLS
+        else :
+            distance = (myid + NCELLS - leaderid) % NCELLS
+    def main():
+        heartBeat()
+        await(False or heartBeat())
+     
     def OnreplyPulse(counter,lleaderid):
         
         if(leaderid == lleaderid):
@@ -87,21 +103,6 @@ class HeartBeatP(DistProcess):
             
                 
 
-    def setup(replicas, lleaderid,lmyid,lthresh,lparent):
-        t_s = 4
-        current = 0
-        failcount = 0
-        myparent = lparent
-        leaderid = lleaderid
-        myid = lmyid
-        threshold = lthresh
-        if(myid > lmyid):
-            distance = (myid - leaderid) % NCELLS
-        else :
-            distance = (myid + NCELLS - leaderid) % NCELLS
-    def main():
-        heartBeat()
-        await(False or heartBeat())
     
     
     
@@ -126,7 +127,9 @@ class Replica(DistProcess):
         
         if (myid == 1):
             leader = spawn(Leader,[acceptors, replicas,self,myid])
-            isLeader = True        
+            isLeader = True       
+            
+            
     def OnleadTheHeard():
         # i need to spawn a leader and 
         leader = spawn(Leader,[acceptors, replicas])
@@ -185,8 +188,9 @@ class Replica(DistProcess):
    
     def Onhb():
         output("This is the heart beat that i was talking about")
-    def OnLeaderIAm(leader1):
+    def OnLeaderIAm(leader1,leadid):
         leader = leader1
+        hb = spawn(HeartBeatP,[replicas, lleaderid,lmyid,lthresh,lparent])
         if(isLeader):
             # i was the leader before. now i am not, 
             # check if heartBeat proc is working.??
