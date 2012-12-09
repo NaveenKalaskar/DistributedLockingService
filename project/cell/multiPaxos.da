@@ -26,7 +26,7 @@ class KeepAliveP(DistProcess):
                 #--yieldb
                 testcounter = testcounter  + 1
                 sleep(2)
-                if testcounter > 7:
+                if testcounter > 3:
                     isLeader = False
                
                 return False
@@ -77,12 +77,12 @@ class HeartBeatP(DistProcess):
                     output("========counter and current equal====",counter)
                 output("***received a counter with stale count**"+str(counter)+" "+str(current)+"from")
                 output("the current failcount is "+str(failcount)+" thresh"+str(distance*threshold))
-                # check fail count.
                 failcount = failcount + 1
                 if(failcount > distance*threshold):
                     output("sending lead the heard to my parent")
+                    send(Dummy(self),myparent)
                     failcount = 0
-                    send(leadTheHeard(),myparent)             
+                    send(leadTheHeard(self),myparent)             
             else:
                 failcount = 0
                 output("received a counter with count "+str(counter))
@@ -113,10 +113,14 @@ class Replica(DistProcess):
         
         if (myid == 1):
             leader = spawn(Leader,[acceptors, replicas,self,myid])
-            isLeader = True       
+            isLeader = True
             
-            
-    def OnleadTheHeard():
+    def OnDummy(hbr):
+        isLeader = True
+        output("###############You dummy###############")
+        
+    def OnleadTheHeard(hbr):
+        output("In the replica's lead the heard")       
         leader = spawn(Leader,[acceptors, replicas,self,myid])
         print(" the new leader is ")
         output(leader)
@@ -143,7 +147,7 @@ class Replica(DistProcess):
             counter = lcounter
             
     def OnHeartBeat(hbp):
-        #output("Received Heart beat " )
+        output("Received Heart beat " )
         send(replyPulse(counter,leaderid,lastklproc,myid),hbp)
     def main():
         if(lmyid == 1):
@@ -430,8 +434,8 @@ class Client(DistProcess):
                 count[cid] += 1
 
 def main():
-    nacceptors = 3
-    nreplicas = 3
+    nacceptors = 2
+    nreplicas = 2
     nleaders = 1
     nclients = 4
     nops = 5
