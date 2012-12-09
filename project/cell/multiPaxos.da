@@ -2,128 +2,114 @@
 from random import randint
 from time import sleep
 import sys
-NOPS = 10                       # Number of operations of the state machine
-#operations = {i: (lambda state: (state+i,state+i)) for i in range(NOPS)}
+NOPS = 10
 
 class KeepAliveP(DistProcess):
        
-       # This thread sends keep alive messages to replicas this thread is 
-       # spawned by leader.
-       # for each replica at every regular interval, update its leader alive counter
-       # by fixed value.
-       # sleep for fixed amount of time.
-
        def setup(replicas,timetosleep,lcount,lleadid,lparent):
            output("called set up of KeepAliveP")
            leadid = lleadid
-           count =  lcount
+           #count =  lcount
+           count = 1
            parent = lparent
-           notLeader = True
-           counter = 0
+           isLeader = True
+           counter = 1
+           testcounter = 0 # test case : smooth hand over
            
        def keepAlive():
-           if(notLeader):
-                sleep(1)
-                --yielda
-                output("Sending KeepAlive from KeepAliveP")
-                send(KeepAlive(counter,leadid),replicas)
+           if(isLeader):
+                #--yielda
+                output("Sending KeepAlive from KeepAliveP with values "+(str(counter)))
+                send(KeepAlive(counter,leadid,self),replicas)
                 output("returning after send")
                 counter = counter + count
-                --yieldb
+                #--yieldb
+                testcounter = testcounter  + 1
+                sleep(2)
+                if testcounter > 7:
+                    isLeader = False
+               
                 return False
            else:
                 output("In the bloody false")
-                return False
+                return True
 
-       def die(newleader):
-           output("In die of KeepAliveP")
-           send(Die(leadid,newleader),parent)
-           notLeader = True
+       def Ondie(nleadid,newleader):
+           print('\n\n')
+           output("In die of KeepAliveP") 
+           print('\n\n')
+           send(Die(nleadid,newleader),parent)
+           isLeader = False
        
        def main():
-           output("In keepAliveP main")
            await(keepAlive())
-           output("after await")
-           
-
+          
 class HeartBeatP(DistProcess):
-# for a fixed amount of time check the time last ping was done by the leader..
-# by calling a send on replica which in turn just calls the ping response of heart beat.
-#Also the leader can ping all the replicas regularly and check if all of them are responding.
-# if one of them doesn't respond, it notifies other replicas about it?? or when a leader comes up
-# should it check if all the replicas it has information about are up??
-
-# when leader is spawned it needs to check if all the replicas are up? ( the leader and replicas 
-# are co located .. so, if the leader is down, it implied that even the corresponding replica is down
-#
     def setup(replicas, lleaderid,lmyid,lthresh,lparent):
+        NCELLS =3
         t_s = 4
         current = 0
         failcount = 0
         myparent = lparent
         leaderid = lleaderid
         myid = lmyid
-        threshold = lthresh
-        if(myid > lmyid):
+        threshold = 5 #lthresh
+        if(myid > leaderid):
             distance = (myid - leaderid) % NCELLS
         else :
             distance = (myid + NCELLS - leaderid) % NCELLS
     def main():
         heartBeat()
         await(False or heartBeat())
-     
-    def OnreplyPulse(counter,lleaderid):
         
+    def heartBeat():
+        sleep(2)
+        send(HeartBeat(self),myparent)
+     
+    def OnreplyPulse(counter,lleaderid,klproc,myreplicaid):
+        #output("reply pulse received")
+        if(myreplicaid == lleaderid):
+            output("replica id is equal to lleaderid in HeartBeatP")
+            return
         if(leaderid == lleaderid):
             if(current >= counter):
+                if(current == counter):
+                    output("========counter and current equal====",counter)
+                output("***received a counter with stale count**"+str(counter)+" "+str(current)+"from")
+                output("the current failcount is "+str(failcount)+" thresh"+str(distance*threshold))
                 # check fail count.
                 failcount = failcount + 1
                 if(failcount > distance*threshold):
-                    # YAY@ bich its my turn 
-                    # intimate the replica to proudly spawn a leader
-                    send(leadTheHeard(),myparent)
-                # if fail count is more than the threshold
-                # chck if it is its turn to become a leader
-                
+                    output("sending lead the heard to my parent")
+                    failcount = 0
+                    send(leadTheHeard(),myparent)             
             else:
                 failcount = 0
+                output("received a counter with count "+str(counter))
                 current = counter
-                
-                # counter jumping?? do we care..
-                
+                             
         else:
             # CELEBRATE!! THE SAVIOUR IS BORN!! :) NEW LEADER
             leaderid = lleaderid
             current = counter
             failcount = 0
-            if(myid > lmyid):
+            if(myid > leaderid):
                 distance = (myid - leaderid) % NCELLS
             else :
                 distance = (myid + NCELLS - leaderid) % NCELLS
             
-                
-
-    
-    
-    
 class Replica(DistProcess):
     
-    # the replica with myid=1 should spawn a leader and communicate
-    # its identity to all other replicas..
-    # so, in order to do that replica should be aware of all other replicas
-    # also, replica should be aware of acceptors, as leader needs to know them
     def setup(acceptors,replicas,initial_state,myself,lmyid):
         myid = lmyid
         initialized = False
         leader = None
-        leaderid = -1
+        leaderid = 1
         isLeader = False
         counter = 0
         state, slot_num = initial_state, 1
         proposals, decisions = set(), set()
-        #mspawn(Scout, [self, acceptors, ballot_num,slot_num])
-        
-        # spawn a heartBeat thread. 
+        lastklproc = None
         
         if (myid == 1):
             leader = spawn(Leader,[acceptors, replicas,self,myid])
@@ -131,29 +117,34 @@ class Replica(DistProcess):
             
             
     def OnleadTheHeard():
-        # i need to spawn a leader and 
-        leader = spawn(Leader,[acceptors, replicas])
+        leader = spawn(Leader,[acceptors, replicas,self,myid])
+        print(" the new leader is ")
+        output(leader)
         isLeader = True
         leaderAnnounce()
         #tell Heartbeat that I am the leader
-        sleep(2) # wait for others to know that u r indeed the leader.    
             
-    
-    def OnKeepAlive(lcounter,lleaderid):
-        output("OnKeepAlive")
-        output(lcounter,lleaderid)
-        # check whether the message is from the current leader
+    def OnKeepAlive(lcounter,lleaderid,klproc):
+        output("received keep alive with counter as "+str(lcounter))
+        lastklproc = klproc
+        # checreplicas,k whether the message is from the current leader
         if not (leaderid == lleaderid):
-            send(die(leaderid),_source)
+            output("**********new leader id detected*********")
+            output("sending die to original leader***********")
+            send(die(leaderid,leader),klproc)
+            return
         # check the counter if the counter is older one ignore
-        if(counter < lcounter):
+        if(counter > lcounter):
             # do nothing
-               temp = 1
-        else:       
+            output("received keep alive with counter as "+lcounter)
+            temp = 1
+        else:
+            output("assgning new counter values in REplica")
             counter = lcounter
             
-    def OnHeartBeat():
-        send(replyPulse(counter,leaderid),_source)
+    def OnHeartBeat(hbp):
+        #output("Received Heart beat " )
+        send(replyPulse(counter,leaderid,lastklproc,myid),hbp)
     def main():
         if(lmyid == 1):
             leaderAnnounce()
@@ -163,43 +154,34 @@ class Replica(DistProcess):
     
     def yieldandReturnFalse():
         a = 1
-        --yield1
         a= a + 2
-        --yield2
         a= a + 3
-        --yield3
-        sleep(2)
-        output("checking if False in rep")
+        sleep(1)
         return False
         
-    def OnleadDie(leadid,newleader):
-        # need to spawn a HeartBeat as the leader Replica never 
-        # had one
-       leadDie(leadid,newleader)
-    
+    def OnleadDie(newleadid,newleader):
+        if not(newleadid == leaderid):
+            output("anomoly detected.. onleadDie:newleadid,leadid differ")
+        if not(newleader == leader):    
+            output("anomoly detected.. onleadDie:newleadid,leadid differ")
     def leaderAnnounce():
-            send(LeaderIAm(leader,myid),replicas-set([myself]))
+            send(LeaderIAm(leader,myid),replicas)
         
     def operations(op):
         llock = op % 5;
         oper = op %2 ;
         ffile = "file".join(str(llock))
         state[ffile] = oper
-   
-    def Onhb():
-        output("This is the heart beat that i was talking about")
-    def OnLeaderIAm(leader1,leadid):
-        leader = leader1
-        hb = spawn(HeartBeatP,[replicas, lleaderid,lmyid,lthresh,lparent])
-        if(isLeader):
-            # i was the leader before. now i am not, 
-            # check if heartBeat proc is working.??
-            # pingHeartBeat(randint(1,10000)and check if a hbstatus 
-            # set to this randint
-            isLeader = False # some one else is the leader    
-        sleep(2) # stabilize .. 
         
+    def OnLeaderIAm(leader1,leadid):
+        if(isLeader):
+            send(Die(leader1,leadid),leader)
+            isLeader = False # some one else is the leader    
+        leader = leader1
+        hb = spawn(HeartBeatP,[replicas, leadid,myid,10,self])     
+        sleep(2) # stabilize .. 
         output("I am told this is my leader"+str(leader));    
+    
     def propose(p):
         if not {s for (s, p1) in decisions if p1 == p}:
             maxs = max({0} |
@@ -216,19 +198,14 @@ class Replica(DistProcess):
         k, cid, op = p
         if {s for (s, p0) in decisions if p0 == p and s < slot_num}:
             slot_num += 1
-        else:
-                
+        else:              
             operations(op)
             result = state
             slot_num = slot_num + 1
             send(Completed(slot_num),leader)
             send(Response(cid, result), k)   
-            #proposals = proposals - set([(s1,p1) for (s1,p1) in proposals if s1 < slot_num])
-            #garbage collection
-            #send(Performed(slot_num, p), leaders)
+  
     def OnRequest(p):
-        # acquire a lock before proposing/serving a read. / only one read/write in a server can be 
-        # done at a
         propose(p)
 
     def OnDecision(s, p):
@@ -238,6 +215,88 @@ class Replica(DistProcess):
             for p2 in {p2 for (s0,p2) in proposals if s0==slot_num if p2 != p1}:
                 propose(p2)
             perform(p1)
+
+class Leader(DistProcess):
+    def setup(acceptors,replicas,parent,myid):
+        ballot_num = randint(0,500)
+        ballot_num = ballot_num % 30 
+        gc_collector = {} # a slot and count of number of leaders 
+                          # that completed it 
+        active = False
+        proposals = set()
+        slot_num = 0
+        myparent = parent
+        nreplicas = len(replicas)
+        leadlock = True # this is the leader lock
+        isLeader = True
+        
+            
+    def OnDie(newleadid,newleader):
+        print("\n\n")
+        output(self)
+        print("I am dieing....  as new leadid is "+str(newleadid))
+        print("\n\n")
+        isLeader = False
+        send(leadDie(newleadid,newleader),parent)
+        
+    def main():
+        spawn(Scout, [self, acceptors, ballot_num,slot_num])
+        spawn(KeepAliveP,[replicas,5,1,myid,self])
+        await(yieldandCheckIfLeader())
+        
+    def yieldandCheckIfLeader():      
+         a = 0
+         a = a + 1
+         sleep(1)
+         if not(isLeader):
+             output("I am no more the leader")
+         return  not(isLeader)
+  
+    def OnPropose(s, p):
+        
+        if not {p1 for (s1, p1) in proposals if s1 == s}:
+            proposals.add((s,p))
+            if active:
+                spawn(Commander, [self, acceptors, replicas, (ballot_num, s, p)])
+        leadlock = True
+       
+    def OnAdopted(ballot_num_, pvals):
+        if ballot_num == ballot_num_:
+            proposals = circle_plus(proposals, pmax(pvals))
+            for (s, p) in proposals:
+                spawn(Commander, [self, acceptors, replicas, (ballot_num, s, p)])
+            active = True
+        #output(" I am adopted "+str(ballot_num))
+
+    def OnDecided(slot):
+        #output(" this slot was decided "+str(slot))
+        slot_num = slot
+    
+    def OnCompleted(slot):
+        #output("this slot was completed : "+str(slot))
+        if slot in gc_collector:
+            count = gc_collector[slot]
+            if(count == nreplicas-1):
+                del gc_collector[slot]
+                #output("GC collecting slot "+str(slot))            
+                send(GcCollect(slot),acceptors)
+            else:
+                gc_collector[slot] = count+1
+        else:
+                gc_collector[slot] = 1
+    def OnPreempted(b):
+        r1 = b
+        active = False
+        ballot_num = r1+1
+        spawn(Scout, [self, acceptors, ballot_num, slot_num])
+                    
+    def circle_plus(x, y):
+        return y | {(s, p) for (s, p) in x
+                      if not {p1 for (s0, p1) in y if s0 == s}}
+
+    def pmax(pvals):
+        return {(s, p) for (b, s, p) in pvals
+                if all(b1 <= b for (b1, s0, p1) in pvals if s0 == s)}
 
 class Acceptor(DistProcess):
     def setup():
@@ -272,103 +331,7 @@ class Acceptor(DistProcess):
             if(gc_slot < slot):
                 del accepted[slot]
                 gc_slot = slot
-class Leader(DistProcess):
-    def setup(acceptors,replicas,parent,myid):
-        ballot_num = randint(0,500)
-        ballot_num = ballot_num % 30 
-        gc_collector = {} # a slot and count of number of leaders 
-                          # that completed it 
-        active = False
-        proposals = set()
-        slot_num = 0
-        myparent = parent
-        nreplicas = len(replicas)
-        leadlock = True # this is the leader lock
-        isLeader = True
-        
-            
-    def OnDie(leadid,newleader):
-        isLeader = False
-        send(leadDie(leadid,newleader),parent)
-        
-    def main():
-        spawn(Scout, [self, acceptors, ballot_num,slot_num])
-        spawn(KeepAliveP,[replicas,5,1,myid,self])
-        await(yieldandCheckIfLeader())
-        
-    def yieldandCheckIfLeader():      
-         a = 0
-         --yield1
-         a = a + 1
-         output("chekcing if leader")
-         sleep(1)
-         --yield2
-         return  not(isLeader)
-  
-    def OnPropose(s, p):
-        
-        # acquire the global lock. No other propose should be done with in this leader
-        # before this proposal.
-            #permission check??
-            # from proposal get the type of operation required.
-            #if the operation is on a not existing node .. check if a create is required.
-            #if no release the lock and return error
-            #
-            #if the operation is a read, it can be satisfied at this replica it self.
-            #
-            #check the type of request.
-            # if try acquire.. check if its busy, return failure
-            #intimate the replica about the request.
-            #
-        if not {p1 for (s1, p1) in proposals if s1 == s}:
-            proposals.add((s,p))
-            if active:
-                spawn(Commander, [self, acceptors, replicas, (ballot_num, s, p)])
-        leadlock = True
-       
-    def OnAdopted(ballot_num_, pvals):
-        if ballot_num == ballot_num_:
-            proposals = circle_plus(proposals, pmax(pvals))
-            for (s, p) in proposals:
-                spawn(Commander, [self, acceptors, replicas, (ballot_num, s, p)])
-            active = True
-        #output(" I am adopted "+str(ballot_num))
-
-    def OnDecided(slot):
-        #output(" this slot was decided "+str(slot))
-        slot_num = slot
-    
-    def OnCompleted(slot):
-        #output("this slot was completed : "+str(slot))
-        if slot in gc_collector:
-            count = gc_collector[slot]
-            if(count == nreplicas-1):
-                del gc_collector[slot]
-                #output("GC collecting slot "+str(slot))            
-                send(GcCollect(slot),acceptors)
-            else:
-                gc_collector[slot] = count+1
-        else:
-                gc_collector[slot] = 1
-    def OnPreempted(b):
-        r1 = b
-        #output(self)
-        #output(str(ballot_num)+": I am preempted by"+str(b))
-        #if b > ballot_num:
-        active = False
-        ballot_num = r1+1
-        #output("retrying with "+str(ballot_num))
-        spawn(Scout, [self, acceptors, ballot_num, slot_num])
-                    
-    def circle_plus(x, y):
-        return y | {(s, p) for (s, p) in x
-                      if not {p1 for (s0, p1) in y if s0 == s}}
-
-    def pmax(pvals):
-        return {(s, p) for (b, s, p) in pvals
-                if all(b1 <= b for (b1, s0, p1) in pvals if s0 == s)}
-
-
+                
 class Commander(DistProcess):
     def setup(lam, acceptors, replicas, load):
         waitfor = set(acceptors)
@@ -470,7 +433,7 @@ def main():
     nacceptors = 3
     nreplicas = 3
     nleaders = 1
-    nclients = 8
+    nclients = 4
     nops = 5
 
     use_channel("tcp")
@@ -488,7 +451,7 @@ def main():
     initial_state["file3"] = 3
     initial_state["file4"] = 4
     for rep in replicas:
-        setupprocs([rep], (acceptors,replicas, initial_state,rep,myid))
+        setupprocs([rep], (acceptors,replicas-set([rep]), initial_state,rep,myid))
         myid = myid +1
     #setupprocs(hbeats,[replicas])
     setupprocs(acceptors,[])
