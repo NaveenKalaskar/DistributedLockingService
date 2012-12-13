@@ -1,4 +1,4 @@
-# vim: tabst    op=8 expandtab shiftwidth=4 softtabstop=4 filetype=python
+# vim: tabstp    op=8 expandtab shiftwidth=4 softtabstop=4 filetype=python
 from random import randint
 from time import sleep
 import sys
@@ -6,42 +6,39 @@ NOPS = 10
 
 class KeepAliveP(DistProcess):
        
-       def setup(replicas,timetosleep,lcount,lleadid,lparent):
+    def setup(replicas,timetosleep,counter_step,lleadid,lparent):
            output("called set up of KeepAliveP")
            leadid = lleadid
-           #count =  lcount
+           #count =  counter_step
            count = 1
            parent = lparent
            isLeader = True
            counter = 1
            testcounter = 0 # test case : smooth hand over
            
-       def keepAlive():
+    def keepAlive():
            if(isLeader):
-                #--yielda
+                sleep(10)
                 output("Sending KeepAlive from KeepAliveP with values "+(str(counter)))
-                send(KeepAlive(counter,leadid,self),replicas)
+                send(KeepAlive(counter,leadid,parent,self),replicas)
                 output("returning after send")
                 counter = counter + count
                 #--yieldb
-                testcounter = testcounter  + 1
-                sleep(2)
-                if testcounter > 3:
-                    isLeader = False
+                #testcounter = testcounter  + 1
+                #if testcounter > 10:
+                #       isLeader = False
                
                 return False
            else:
                 output("In the bloody false")
                 return True
 
-       def Ondie(nleadid,newleader):
-           print('\n\n')
+    def Onkl_die(nleadid,newleader):
            output("In die of KeepAliveP") 
-           print('\n\n')
            send(Die(nleadid,newleader),parent)
            isLeader = False
        
-       def main():
+    def main():
            await(keepAlive())
           
 class HeartBeatP(DistProcess):
@@ -53,7 +50,7 @@ class HeartBeatP(DistProcess):
         myparent = lparent
         leaderid = lleaderid
         myid = lmyid
-        threshold = 5 #lthresh
+        threshold = 2 #lthresh
         if(myid > leaderid):
             distance = (myid - leaderid) % NCELLS
         else :
@@ -63,7 +60,7 @@ class HeartBeatP(DistProcess):
         await(False or heartBeat())
         
     def heartBeat():
-        sleep(2)
+        sleep(10)
         send(HeartBeat(self),myparent)
      
     def OnreplyPulse(counter,lleaderid,klproc,myreplicaid):
@@ -89,7 +86,6 @@ class HeartBeatP(DistProcess):
                 current = counter
                              
         else:
-            # CELEBRATE!! THE SAVIOUR IS BORN!! :) NEW LEADER
             leaderid = lleaderid
             current = counter
             failcount = 0
@@ -102,41 +98,42 @@ class Replica(DistProcess):
     
     def setup(acceptors,replicas,initial_state,myself,lmyid):
         myid = lmyid
-        initialized = False
         leader = None
         leaderid = 1
         isLeader = False
+        
         counter = 0
+        master = None
+        lock = {}   # contains lock info for each node name
+        state = {}  # contains files 
+        handle = {} # contains open files handle info tuple
+        nxthndl = 0
         state, slot_num = initial_state, 1
         proposals, decisions = set(), set()
         lastklproc = None
-        
+              
         if (myid == 1):
             leader = spawn(Leader,[acceptors, replicas,self,myid])
             isLeader = True
-            
-    def OnDummy(hbr):
-        isLeader = True
-        output("###############You dummy###############")
+            master = myself
         
     def OnleadTheHeard(hbr):
-        output("In the replica's lead the heard")       
-        leader = spawn(Leader,[acceptors, replicas,self,myid])
-        print(" the new leader is ")
-        output(leader)
-        isLeader = True
-        leaderAnnounce()
+        if not(isLeader):
+            output("In the replica's lead the heard")       
+            leader = spawn(Leader,[acceptors, replicas,self,myid])
+            print(" the new leader is ")
+            output(leader)
+            isLeader = True
+            send(LeaderIAm(leader,myid,myself),replicas)
         #tell Heartbeat that I am the leader
             
-    def OnKeepAlive(lcounter,lleaderid,klproc):
+    def OnKeepAlive(lcounter,lleaderid,lleader,klproc):
         output("received keep alive with counter as "+str(lcounter))
         lastklproc = klproc
-        # checreplicas,k whether the message is from the current leader
         if not (leaderid == lleaderid):
-            output("**********new leader id detected*********")
-            output("sending die to original leader***********")
-            send(die(leaderid,leader),klproc)
-            return
+           output("sending die to klproc***********")
+           send(kl_die(lleaderid,lleader),klproc)
+           return
         # check the counter if the counter is older one ignore
         if(counter > lcounter):
             # do nothing
@@ -145,6 +142,10 @@ class Replica(DistProcess):
         else:
             output("assgning new counter values in REplica")
             counter = lcounter
+            
+    def OnwhoIsMaster(clib):
+        output("Received master discovery request")
+        send(MasterIndentityResp(master),clib)
             
     def OnHeartBeat(hbp):
         output("Received Heart beat " )
@@ -160,7 +161,7 @@ class Replica(DistProcess):
         a = 1
         a= a + 2
         a= a + 3
-        sleep(1)
+        #sleep(1)
         return False
         
     def OnleadDie(newleadid,newleader):
@@ -168,21 +169,25 @@ class Replica(DistProcess):
             output("anomoly detected.. onleadDie:newleadid,leadid differ")
         if not(newleader == leader):    
             output("anomoly detected.. onleadDie:newleadid,leadid differ")
+            
     def leaderAnnounce():
-            send(LeaderIAm(leader,myid),replicas)
+            send(LeaderIAm(leader,myid,myself),replicas)
         
     def operations(op):
+        optype = op['optype']
+        
         llock = op % 5;
         oper = op %2 ;
         ffile = "file".join(str(llock))
         state[ffile] = oper
         
-    def OnLeaderIAm(leader1,leadid):
+    def OnLeaderIAm(leader1,lleadid,master_replica):
         if(isLeader):
-            send(Die(leader1,leadid),leader)
+            send(Die(lleadid ,leader1),leader)
             isLeader = False # some one else is the leader    
         leader = leader1
-        hb = spawn(HeartBeatP,[replicas, leadid,myid,10,self])     
+        master = master_replica
+        hb = spawn(HeartBeatP,[replicas, lleadid,myid,10,self])     
         sleep(2) # stabilize .. 
         output("I am told this is my leader"+str(leader));    
     
@@ -195,23 +200,68 @@ class Replica(DistProcess):
                      if not (set(p1 for (s0, p1) in proposals if s0 == s) |
                              set(p1 for (s0, p1) in decisions if s0 == s)))
             proposals.add((s1, p))
-            
+            output("sending proposal to leader")
+            output(leader)
             send(Propose(s1, p), leader)
 
     def perform(p):
         k, cid, op = p
         if {s for (s, p0) in decisions if p0 == p and s < slot_num}:
             slot_num += 1
-        else:              
-            operations(op)
-            result = state
+        else:
+            
+            result = operations(op)
             slot_num = slot_num + 1
             send(Completed(slot_num),leader)
+            output("Sending response to client")
+            output(k)
             send(Response(cid, result), k)   
-  
+    
     def OnRequest(p):
+        k,cid,op = p
+        serve_type = op["stype"]
+        
+        if not (serve_type & 1):
+            dispatch(p)
+        else:
+            send(Request(p),replicas)
+            propose(p)
+        
         propose(p)
-
+        # op is expected to have optype, node, handle,mode 
+    
+    def dispatch(p):
+        k,cid,op = p
+        choice = int(op["optype"])
+        
+        if (choice == 1): 
+            # open 
+            xnode = op["node"]
+            xmode = int(op["mode"])
+            result = do_open(node,mode,p)
+            #more to do
+        elif (choice == 2):
+            # read 
+            xhandle = op["handle"]
+            result = do_read(xhandle)
+        elif (choice == 3):
+            # read stat
+            xhandle = op["handle"]
+            result = do_getStat(xhandle)
+        elif (choice == 4):
+            # get sequencer
+            xhandle = op["handle"]
+            result = do_getSequencer(xhandle)
+        elif (choice == 5):
+            # check sequencer
+            xhandle = op["handle"]
+            result = do_checkSequencer(xhandle)
+        elif (choice == 6):
+            # close
+            xhandle = op["handle"]
+            result = do_close(xhandle)
+        send(Response(cid, result), k)
+        
     def OnDecision(s, p):
         decisions.add((s,p))
         while {p1 for (s0,p1) in decisions if s0==slot_num}:
@@ -219,6 +269,92 @@ class Replica(DistProcess):
             for p2 in {p2 for (s0,p2) in proposals if s0==slot_num if p2 != p1}:
                 propose(p2)
             perform(p1)
+    
+    # do_open() with CREATE_FLAG should be done by client lib
+    # as check if present and then create and open.
+    
+    def do_open(node,mode,p):
+        
+        rw = mode & 1
+        create = mode & 2
+      
+        present = True
+        
+        # is node present.. 
+        if node not in state:
+            present = False
+      
+        if not(present):
+            if not(create):
+                result["error"] = "Node not found"
+        else:
+            propose(p)
+              ## create a node.
+              
+        if(rw == 0):
+               #READ
+              if (handles[node] == None):
+                  x = handles[node] = gensequence()
+                  return handles[node]
+                  
+        if(rw == 1):
+               #WRITE: if locked return failure
+               if(locked[node] == None):
+                   #return a write mode handle
+                   x = handles[node] = gensequence()
+        
+    def do_close(hdl):
+        # releases the handle
+        # is the lock held. If yes, should I release it?
+        # no, probably the lock is cached by clib.
+        # so, unless a request for the lock comes, let clib
+        # cache it.
+        # this by definition should always work fine. 
+        if hdl in handles:
+            del handles[hdl]        
+        
+    def do_getStat(hdl):
+        #gets the stat info
+        xfname = hdl["fname"]
+        return state[xfname]
+    
+    def do_read(hdl):
+        #returns the state of the handle
+        xfname = hdl["fname"]
+        return file[xfname]
+        
+    ## this one is during the perform    
+        
+    def do_setContents(hdl,value):
+        # sets the content of the file to value
+        xfname = hdl["fname"]
+        # check the mode in which handle was opened
+        xmode = hdl["mode"]
+        
+    ## this involves read. so, part of it is during propose and
+    ## the other part is during perform
+    def try_acquire(handle):
+        #
+        
+    ## this is a direct write on lock table. so, propose first.
+    
+    def do_acquire(handle):
+        #acquires a lock
+        
+        
+    
+    def do_release(handle):
+        #explicit release.
+        # modifies the lock table.
+        
+    def do_getSequencer(handle):
+        # provide versioning info. if the clib uses a cached, lock,
+        #before it caches the lock, it gets a sequencer. 
+        
+    def do_checkSequencer(seq):    
+        # validate the sequencer provided.
+        # check if the sequencer is the current leaders sequencer..
+            
 
 class Leader(DistProcess):
     def setup(acceptors,replicas,parent,myid):
@@ -253,11 +389,11 @@ class Leader(DistProcess):
          a = a + 1
          sleep(1)
          if not(isLeader):
-             output("I am no more the leader")
+            output("I am no more the leader")
          return  not(isLeader)
   
     def OnPropose(s, p):
-        
+        output("received proposal")
         if not {p1 for (s1, p1) in proposals if s1 == s}:
             proposals.add((s,p))
             if active:
@@ -270,19 +406,19 @@ class Leader(DistProcess):
             for (s, p) in proposals:
                 spawn(Commander, [self, acceptors, replicas, (ballot_num, s, p)])
             active = True
-        #output(" I am adopted "+str(ballot_num))
+        output(" I am adopted "+str(ballot_num))
 
     def OnDecided(slot):
-        #output(" this slot was decided "+str(slot))
+        output(" this slot was decided "+str(slot))
         slot_num = slot
     
     def OnCompleted(slot):
-        #output("this slot was completed : "+str(slot))
+        output("this slot was completed : "+str(slot))
         if slot in gc_collector:
             count = gc_collector[slot]
             if(count == nreplicas-1):
                 del gc_collector[slot]
-                #output("GC collecting slot "+str(slot))            
+                output("GC collecting slot "+str(slot))            
                 send(GcCollect(slot),acceptors)
             else:
                 gc_collector[slot] = count+1
@@ -331,7 +467,7 @@ class Acceptor(DistProcess):
     
     def OnGcCollect(slot):
         if slot in accepted:
-            #output("this one is gc collected "+str(slot))
+            output("this one is gc collected "+str(slot))
             if(gc_slot < slot):
                 del accepted[slot]
                 gc_slot = slot
@@ -406,7 +542,112 @@ class Scout(DistProcess):
             send(Preempted(b1), lam)
             done = True
 
+class ClientLib(DistProcess):
+    def setup(replicas): # assumes replicas have already started. 
+        masterResp = False
+        discoverMaster()
+        handles = {}
+        
+     # op is expected to have optype, node, handle,mode
+      def discoverMaster():
+        masterResp = False
+        send(whoIsMaster(),replicas)
+        await(masterResp)
+    
+    
+    def OnMasterIndentityResp(t_master):
+        master = t_master
+        masterResp = True
+    
+    def open(k,cid,node,mode):
+        # returns a handle
+        # check validity of mode.
+        op = {}
+        record(k,cid)
+        op['node'] = node
+        op['mode'] = mode
+        op['stype'] = 1
+        op['optype'] = 1
+        req = self,cid,op
+        send(Request(req),master)
+        
+    def close(k,cid,hdl):
+        # releases the handle
+        # check if the hdl exists??
+        op = {}
+        record(k,cid)
+        op['handle'] = hdl
+        op['stype'] = 1
+        op['optype'] = 6
+        req = self,cid,op
+        send(Request(req),master)
+        
+    def getStat(k,cid,hdl):
+        op = {}
+        record(k,cid)
+        op['handle'] = hdl
+        #gets the stat info
+        op['stype'] = 1
+        op['optype'] = 3
+        req = self,cid,op
+        send(Request(req),master)
+        
+    def read(k,cid,handle):
+        # returns the state of the handle
+        op = {}
+        record(k,cid)
+        op['optype'] = 2
+        op['stype'] = 1
+        op['handle'] = hdl
+        req = self,cid,op
+        send(Request(req),master)
+        
+    def setContents(k,cid,handle,value):
+        # sets the content of the file to value
+     
+    def acquire(handle):
+        #acquires a lock 
+    
+    def release(handle):
+        #
+        
+    def getSequencer(k,cid,handle):
+        #
+        op = {}
+        record(k,cid)
+        op['handle'] = hdl
+        op['optype']= 4
+        op['stype'] = 1
+        req = self,cid,op
+        send(Request(req),master)
+        
+    def checkSequencer(k,cid,handle):    
+        #
+        op = {}
+        record(k,cid)
+        op['handle'] = hdl
+        op['optype']= 5
+        op['stype'] = 1
+        req = self,cid,op
+        send(Request(req),master)
+        
+    def record(clnt,cmdid):
+        await(nextClntLock)
+        nextClntLock = False
+        nextClnt = nextClnt + 1
+        pending[str(nextClnt)] = (clnt,cmdid)
+        nextClntLock = True
+    
+    def OnResponse(cid,Result):
+        await(NextClntLock)
+        nextClntLock = False
+        (clnt,cmdid) = pending[cid]
+        send(response(result,cmdid),clnt)
+        del pending[cid]
+        nextClntLock = True
+        
 class Client(DistProcess):
+    
     def setup(replicas):
         cid = 0
         results = dict()
@@ -431,6 +672,8 @@ class Client(DistProcess):
                        (cid, results[cid], result))
                 print(" ")
             else:
+                output("Received result for cid "+str(cid))
+                output(result)
                 count[cid] += 1
 
 def main():
